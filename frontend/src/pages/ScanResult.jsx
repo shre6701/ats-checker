@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, API } from "@/lib/api";
 import HighlightedResume from "@/components/HighlightedResume";
 import {
   ArrowLeft,
@@ -38,7 +38,6 @@ export default function ScanResult() {
   const location = useLocation();
   const [scan, setScan] = useState(location.state?.scan || null);
   const [loading, setLoading] = useState(!scan);
-  const [downloading, setDownloading] = useState(null); // 'resume' | 'cover' | null
 
   useEffect(() => {
     if (scan) return;
@@ -70,56 +69,13 @@ export default function ScanResult() {
   const origScore = a.ats_score ?? 0;
   const newScore = scan.new_ats_score ?? 92;
 
-  const downloadPdf = async (kind) => {
-    setDownloading(kind);
-    const fmt = (scan.source_format || "pdf").toLowerCase();
-    const ext = fmt === "docx" ? "docx" : fmt === "txt" ? "txt" : "pdf";
-    const mime =
-      fmt === "docx"
-        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        : fmt === "txt"
-        ? "text/plain"
-        : "application/pdf";
-    try {
-      const r = await api.get(`/history/${scan.scan_id}/download/${kind}`, {
-        responseType: "blob",
-        params: { fmt },
-      });
-      const blob = new Blob([r.data], { type: mime });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${kind === "resume" ? "optimized_resume" : "cover_letter"}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-      toast.success(`Downloaded ${link.download}`);
-    } catch (err) {
-      console.error("download failed", err);
-      // axios returns errors as Blob when responseType is blob — try to read the message
-      let msg = "Download failed";
-      try {
-        if (err?.response?.data instanceof Blob) {
-          const txt = await err.response.data.text();
-          try {
-            const j = JSON.parse(txt);
-            msg = j.detail || msg;
-          } catch {
-            msg = txt || msg;
-          }
-        } else if (err?.response?.data?.detail) {
-          msg = err.response.data.detail;
-        } else if (err?.message) {
-          msg = err.message;
-        }
-      } catch {
-        // ignore
-      }
-      toast.error(msg);
-    } finally {
-      setDownloading(null);
-    }
+  const fmtUpper = (scan.source_format || "pdf").toUpperCase();
+  const fmtLower = (scan.source_format || "pdf").toLowerCase();
+  const downloadHref = (kind) =>
+    `${API}/history/${scan.scan_id}/download/${kind}?fmt=${encodeURIComponent(fmtLower)}`;
+  const downloadName = (kind) => {
+    const ext = fmtLower === "docx" ? "docx" : fmtLower === "txt" ? "txt" : "pdf";
+    return `${kind === "resume" ? "optimized_resume" : "cover_letter"}.${ext}`;
   };
 
   return (
@@ -275,14 +231,15 @@ export default function ScanResult() {
               >
                 <Copy size={14} weight="bold" />
               </button>
-              <button
-                onClick={() => downloadPdf("resume")}
-                disabled={downloading === "resume"}
+              <a
+                href={downloadHref("resume")}
+                download={downloadName("resume")}
                 data-testid="download-resume-pdf"
-                className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={() => toast.success(`Downloading ${downloadName("resume")}...`)}
+                className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5"
               >
-                <Download size={12} weight="bold" /> {downloading === "resume" ? "..." : (scan.source_format || "pdf").toUpperCase()}
-              </button>
+                <Download size={12} weight="bold" /> {fmtUpper}
+              </a>
             </div>
           </div>
         </div>
@@ -341,14 +298,15 @@ export default function ScanResult() {
             >
               <Copy size={14} weight="bold" />
             </button>
-            <button
-              onClick={() => downloadPdf("cover")}
-              disabled={downloading === "cover"}
+            <a
+              href={downloadHref("cover")}
+              download={downloadName("cover")}
               data-testid="download-cover-pdf"
-              className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={() => toast.success(`Downloading ${downloadName("cover")}...`)}
+              className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5"
             >
-              <Download size={12} weight="bold" /> {downloading === "cover" ? "..." : (scan.source_format || "pdf").toUpperCase()}
-            </button>
+              <Download size={12} weight="bold" /> {fmtUpper}
+            </a>
           </div>
         </div>
         <pre className="p-6 lg:p-10 font-sans text-sm leading-relaxed whitespace-pre-wrap" data-testid="cover-letter-text">
