@@ -217,21 +217,62 @@ def _new_chat(session_id: str, system: str) -> LlmChat:
 
 
 def _parse_json_response(text: str) -> dict:
-    """Strip code fences and parse JSON."""
-    t = text.strip()
+    """Robustly extract a JSON object from an LLM response."""
+    t = (text or "").strip()
+    # Strip markdown fences
     if t.startswith("```"):
-        t = t.split("\n", 1)[1] if "\n" in t else t[3:]
-        if t.endswith("```"):
-            t = t.rsplit("```", 1)[0]
-        if t.startswith("json"):
+        t = t[3:]
+        if t.lower().startswith("json"):
             t = t[4:]
+        if t.endswith("```"):
+            t = t[:-3]
     t = t.strip()
-    # find first { and last }
+    # Try direct first
+    try:
+        return json.loads(t)
+    except Exception:
+        pass
+    # Slice between the first { and matching closing }
     start = t.find("{")
-    end = t.rfind("}")
-    if start != -1 and end != -1:
-        t = t[start : end + 1]
-    return json.loads(t)
+    if start == -1:
+        raise ValueError("No JSON object in LLM response")
+    depth = 0
+    end = -1
+    for i in range(start, len(t)):
+        c = t[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end == -1:
+        end = t.rfind("}")
+    return json.loads(t[start : end + 1])
+
+
+# Input size caps to keep LLM calls fast and within token budget
+MAX_RESUME_CHARS = 12000
+MAX_JD_CHARS = 8000
+
+
+def _truncate(s: str, limit: int) -> str:
+    s = (s or "").strip()
+    return s if len(s) <= limit else s[:limit] + "\n[...truncated for length...]"
+
+
+async def _retry_llm(coro_factory, label: str, attempts: int = 2):
+    """Call an async LLM-producing callable with one retry on transient failure."""
+    last_err = None
+    for i in range(attempts):
+        try:
+            return await coro_factory()
+        except Exception as e:
+            last_err = e
+            logger.warning(f"{label} attempt {i + 1}/{attempts} failed: {e}")
+            await asyncio.sleep(0.6)
+    raise last_err
 
 
 async def llm_analyze(resume: str, jd: str, job_title: str, company: str) -> dict:
@@ -360,19 +401,27 @@ async def scan_resume(req: ScanRequest, user: User = Depends(get_current_user)):
     if not req.resume_text.strip() or not req.job_description.strip():
         raise HTTPException(status_code=400, detail="Resume and job description required")
 
-    # Run all 3 LLM calls in parallel. The cover letter uses the ORIGINAL resume
-    # (it draws on the candidate's real experience, not the rewritten formatting).
-    analysis, optimization, cover_letter = await asyncio.gather(
-        llm_analyze(req.resume_text, req.job_description, req.job_title or "", req.company or ""),
-        llm_optimize(req.resume_text, req.job_description, [], target=92),
-        llm_cover_letter(
-            req.resume_text,
-            req.job_description,
-            req.job_title or "",
-            req.company or "",
-            user.name,
-        ),
+    resume = _truncate(req.resume_text, MAX_RESUME_CHARS)
+    jd = _truncate(req.job_description, MAX_JD_CHARS)
+    jt = (req.job_title or "")[:200]
+    co = (req.company or "")[:200]
+
+    # All three LLM calls run in parallel; each has its own retry.
+    # We use return_exceptions so a partial failure surfaces a clean 502, not a crash.
+    results = await asyncio.gather(
+        _retry_llm(lambda: llm_analyze(resume, jd, jt, co), "analyze"),
+        _retry_llm(lambda: llm_optimize(resume, jd, [], target=92), "optimize"),
+        _retry_llm(lambda: llm_cover_letter(resume, jd, jt, co, user.name), "cover_letter"),
+        return_exceptions=True,
     )
+    analysis, optimization, cover_letter = results
+    failures = [name for name, r in zip(("analyze", "optimize", "cover_letter"), results) if isinstance(r, Exception)]
+    if failures:
+        logger.error(f"Scan failed for steps: {failures}; errors: {[r for r in results if isinstance(r, Exception)]}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI service unavailable for: {', '.join(failures)}. Please retry.",
+        )
 
     scan_id = f"scan_{uuid.uuid4().hex[:12]}"
     doc = {

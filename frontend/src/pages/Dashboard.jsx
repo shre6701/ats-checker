@@ -45,16 +45,25 @@ export default function Dashboard() {
     if (!jobDescription.trim()) return toast.error("Paste the job description.");
     setScanning(true);
     try {
-      const r = await api.post("/resumes/scan", {
-        resume_text: resumeText,
-        job_description: jobDescription,
-        job_title: jobTitle,
-        company,
-      });
+      const r = await api.post(
+        "/resumes/scan",
+        {
+          resume_text: resumeText,
+          job_description: jobDescription,
+          job_title: jobTitle,
+          company,
+        },
+        { timeout: 120000 }, // 120s for the 3 parallel LLM calls
+      );
       toast.success("Scan complete.");
       navigate(`/scan/${r.data.scan_id}`, { state: { scan: r.data } });
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Scan failed. Try again.");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      if (err?.code === "ECONNABORTED") {
+        toast.error("Scan timed out. Please try again.");
+      } else {
+        toast.error(detail || "Scan failed. Please try again.");
+      }
     } finally {
       setScanning(false);
     }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { api, API } from "@/lib/api";
+import { api } from "@/lib/api";
 import HighlightedResume from "@/components/HighlightedResume";
 import {
   ArrowLeft,
@@ -38,6 +38,7 @@ export default function ScanResult() {
   const location = useLocation();
   const [scan, setScan] = useState(location.state?.scan || null);
   const [loading, setLoading] = useState(!scan);
+  const [downloading, setDownloading] = useState(null); // 'resume' | 'cover' | null
 
   useEffect(() => {
     if (scan) return;
@@ -69,10 +70,26 @@ export default function ScanResult() {
   const origScore = a.ats_score ?? 0;
   const newScore = scan.new_ats_score ?? 92;
 
-  const downloadPdf = (kind) => {
-    const url = `${API}/history/${scan.scan_id}/download/${kind}`;
-    // navigate cookie-bearing request
-    window.open(url, "_blank");
+  const downloadPdf = async (kind) => {
+    setDownloading(kind);
+    try {
+      const r = await api.get(`/history/${scan.scan_id}/download/${kind}`, { responseType: "blob" });
+      const blob = new Blob([r.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = kind === "resume" ? "optimized_resume.pdf" : "cover_letter.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // small delay so the browser keeps the URL until the download dialog appears
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`${kind === "resume" ? "Resume" : "Cover letter"} downloaded`);
+    } catch {
+      toast.error("Download failed");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   return (
@@ -230,10 +247,11 @@ export default function ScanResult() {
               </button>
               <button
                 onClick={() => downloadPdf("resume")}
+                disabled={downloading === "resume"}
                 data-testid="download-resume-pdf"
-                className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5"
+                className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Download size={12} weight="bold" /> PDF
+                <Download size={12} weight="bold" /> {downloading === "resume" ? "..." : "PDF"}
               </button>
             </div>
           </div>
@@ -295,10 +313,11 @@ export default function ScanResult() {
             </button>
             <button
               onClick={() => downloadPdf("cover")}
+              disabled={downloading === "cover"}
               data-testid="download-cover-pdf"
-              className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5"
+              className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Download size={12} weight="bold" /> PDF
+              <Download size={12} weight="bold" /> {downloading === "cover" ? "..." : "PDF"}
             </button>
           </div>
         </div>
