@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { api, API } from "@/lib/api";
+import HighlightedResume from "@/components/HighlightedResume";
 import {
   ArrowLeft,
   CheckCircle,
@@ -238,12 +239,29 @@ export default function ScanResult() {
           </div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2">
-          <pre className="p-6 lg:p-8 border-b lg:border-b-0 lg:border-r border-border font-mono text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto" data-testid="original-resume-text">
-            {scan.original_resume}
-          </pre>
-          <pre className="p-6 lg:p-8 bg-[#FAFAFA] font-mono text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto" data-testid="optimized-resume-text">
-            {scan.optimized_resume}
-          </pre>
+          <HighlightedResume
+            text={scan.original_resume}
+            matchedKeywords={a.matched_keywords || []}
+            testId="original-resume-text"
+            className="p-6 lg:p-8 border-b lg:border-b-0 lg:border-r border-border"
+          />
+          <HighlightedResume
+            text={scan.optimized_resume}
+            addedKeywords={a.missing_keywords || []}
+            matchedKeywords={a.matched_keywords || []}
+            testId="optimized-resume-text"
+            className="p-6 lg:p-8 bg-[#FAFAFA]"
+          />
+        </div>
+        <div className="border-t border-border px-6 py-3 bg-white flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[10px] tracking-wider text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 bg-[#DCFCE7]" style={{ boxShadow: "inset 0 -2px 0 #00C853" }} />
+            ADDED KEYWORD (FROM JD)
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3" style={{ background: "rgba(0,47,167,0.12)", boxShadow: "inset 0 -1px 0 rgba(0,47,167,0.3)" }} />
+            ALREADY MATCHED
+          </span>
         </div>
         {(scan.changes_made || []).length > 0 && (
           <div className="border-t border-border p-6 bg-white">

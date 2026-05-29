@@ -3,6 +3,7 @@ import os
 import io
 import json
 import uuid
+import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -359,16 +360,18 @@ async def scan_resume(req: ScanRequest, user: User = Depends(get_current_user)):
     if not req.resume_text.strip() or not req.job_description.strip():
         raise HTTPException(status_code=400, detail="Resume and job description required")
 
-    analysis = await llm_analyze(req.resume_text, req.job_description, req.job_title or "", req.company or "")
-    optimization = await llm_optimize(
-        req.resume_text, req.job_description, analysis.get("missing_keywords", []), target=92
-    )
-    cover_letter = await llm_cover_letter(
-        optimization["optimized_resume"],
-        req.job_description,
-        req.job_title or "",
-        req.company or "",
-        user.name,
+    # Run all 3 LLM calls in parallel. The cover letter uses the ORIGINAL resume
+    # (it draws on the candidate's real experience, not the rewritten formatting).
+    analysis, optimization, cover_letter = await asyncio.gather(
+        llm_analyze(req.resume_text, req.job_description, req.job_title or "", req.company or ""),
+        llm_optimize(req.resume_text, req.job_description, [], target=92),
+        llm_cover_letter(
+            req.resume_text,
+            req.job_description,
+            req.job_title or "",
+            req.company or "",
+            user.name,
+        ),
     )
 
     scan_id = f"scan_{uuid.uuid4().hex[:12]}"
