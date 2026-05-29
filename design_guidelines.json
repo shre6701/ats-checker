@@ -1,0 +1,76 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "emotion": "Authority, Clarity, Precision, Objective Truth",
+  "fonts": {
+    "heading": "Chivo",
+    "body": "IBM Plex Sans",
+    "mono": "IBM Plex Mono",
+    "instructions": "Do NOT use Inter for headings. Use font-black (900) for large headings, with tracking-tighter. Use IBM Plex Mono for ATS keywords, metrics, and labels to emphasize technical precision."
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "foreground": "#0A0A0A",
+    "primary": "#002FA7", 
+    "primary_foreground": "#FFFFFF",
+    "border": "#E5E5E5",
+    "muted": "#F5F5F5",
+    "muted_foreground": "#525252",
+    "success": "#00C853",
+    "warning": "#FFC107",
+    "destructive": "#FF3B30",
+    "instructions": "No full-page gradients. Use pure monochrome structure with primary blue (#002FA7) strictly for primary actions. The UI should look like a high-end technical document. Scores MUST use the semantic success/warning/destructive colors."
+  },
+  "surfaces_and_borders": {
+    "style": "Grid Borders (The Technical Look)",
+    "radius": "rounded-none",
+    "shadows": "none, use 1px solid borders to define hierarchy",
+    "glassmorphism": "Not recommended for this archetype. Use solid white backgrounds.",
+    "cards": "border-collapse style layout, border-r border-b border-border."
+  },
+  "layout_strategy": {
+    "general_spacing": "Generous Spacing Philosophy. Use p-8 or p-12 for main containers.",
+    "dashboard_grid": "MODE B: THE 'CONTROL ROOM' GRID. Base grid: grid-cols-1 md:grid-cols-3 lg:grid-cols-4. Tight gaps (gap-4 or gap-6).",
+    "resume_optimizer_pattern": "Synchronized split panes. grid-cols-2. Sticky comparison header (z-10, top-0, bg-white) for document context. Inline deltas for keyword changes (green highlight for added, red strike for removed).",
+    "ats_score_card": "Bento layout. 1 massive number block (Score) spanning col-span-1. List of missing keywords block (col-span-2). Match % gauge block."
+  },
+  "components": {
+    "library": "shadcn/ui",
+    "customization_rules": [
+      "Remove border-radius from Shadcn components (set --radius to 0 in css)",
+      "Buttons must have sharp corners, tracking-wide text, and high contrast hover states (hover:bg-black hover:text-white or hover:bg-blue-800)",
+      "Forms: Use Shadcn Input, Textarea. Add focus:ring-2 focus:ring-primary focus:outline-none.",
+      "File Upload: Large dashed border area, p-12, minimalist icon. No playful illustrations."
+    ]
+  },
+  "motion": {
+    "strategy": "Minimalist",
+    "rules": [
+      "No bouncy animations",
+      "Hover states: precise background color shifts or 1px sharp translations",
+      "Entrance: Simple opacity fade-in (duration 200ms)"
+    ]
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "style": "Regular or Bold weights, avoid Duotone for this brutalist archetype"
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "background",
+        "description": "Minimalist Swiss style geometric abstract background for login page or dashboard hero background. Use as full cover behind forms or headers.",
+        "url": "https://static.prod-images.emergentagent.com/jobs/c0e68dc4-1ef5-4f8e-ab01-8c4956d05170/images/16b3a4d9c565f0b2f3f9b9eda933293817bdc325074d562a87585d5ac8170ecf.png"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Run: yarn add @phosphor-icons/react",
+    "Update index.css to set --radius: 0rem to achieve the sharp technical look",
+    "Import Chivo and IBM Plex Sans from Google Fonts in index.html or global css",
+    "Build the dashboard using pure white and light grey backgrounds, separated by 1px borders.",
+    "For the Resume Optimizer: Build a split-pane layout (left: original, right: optimized) using grid-cols-1 md:grid-cols-2. Make the column headers sticky so the user never loses context while scrolling.",
+    "For the ATS Score Card: Use a Bento grid. Make the Score number massive (text-6xl+ font-black) and color-coded. Use IBM Plex Mono for listed missing keywords.",
+    "All interactive elements MUST have data-testid attributes (e.g., data-testid='upload-resume-button')."
+  ]
+}
