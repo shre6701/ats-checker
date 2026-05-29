@@ -85,7 +85,8 @@ export default function ScanResult() {
       // small delay so the browser keeps the URL until the download dialog appears
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast.success(`${kind === "resume" ? "Resume" : "Cover letter"} downloaded`);
-    } catch {
+    } catch (err) {
+      console.error("PDF download failed", err);
       toast.error("Download failed");
     } finally {
       setDownloading(null);
