@@ -41,7 +41,7 @@ def test_auth_me_authenticated():
     assert data["name"] == "Jane Doe"
 
 
-# Resume parse: DOCX
+# Resume parse: DOCX -> returns source_format=docx
 def test_parse_docx():
     doc = Document()
     doc.add_paragraph("Jane Doe - Software Engineer")
@@ -52,10 +52,22 @@ def test_parse_docx():
     files = {"file": ("resume.docx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
     r = requests.post(f"{BASE_URL}/api/resumes/parse", files=files, headers=HEADERS)
     assert r.status_code == 200, r.text
-    assert "Jane Doe" in r.json()["text"]
+    data = r.json()
+    assert "Jane Doe" in data["text"]
+    assert data.get("source_format") == "docx"
 
 
-# Scan pipeline (slow - 3 LLM calls)
+# Resume parse: TXT -> returns source_format=txt
+def test_parse_txt():
+    files = {"file": ("resume.txt", b"Jane Doe\nPython developer", "text/plain")}
+    r = requests.post(f"{BASE_URL}/api/resumes/parse", files=files, headers=HEADERS)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data.get("source_format") == "txt"
+    assert "Jane Doe" in data["text"]
+
+
+# Scan pipeline (slow - 3 LLM calls) - DOCX source
 @pytest.fixture(scope="module")
 def scan_result():
     r = requests.post(
@@ -65,12 +77,17 @@ def scan_result():
             "job_description": SAMPLE_JD,
             "job_title": "Senior Backend Engineer",
             "company": "TestCo",
+            "source_format": "docx",
         },
         headers=HEADERS,
         timeout=180,
     )
     assert r.status_code == 200, r.text
     return r.json()
+
+
+def test_scan_stores_source_format(scan_result):
+    assert scan_result.get("source_format") == "docx"
 
 
 def test_scan_response_shape(scan_result):
@@ -101,19 +118,51 @@ def test_history_get(scan_result):
     assert r.json()["scan_id"] == scan_result["scan_id"]
 
 
-# Downloads
-def test_download_resume_pdf(scan_result):
+# Downloads - default (no fmt) follows source_format=docx
+def test_download_resume_default_uses_source_format(scan_result):
     r = requests.get(f"{BASE_URL}/api/history/{scan_result['scan_id']}/download/resume", headers=HEADERS)
     assert r.status_code == 200
-    assert r.headers["content-type"].startswith("application/pdf")
-    assert r.content.startswith(b"%PDF")
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert r.content[:4] == b"PK\x03\x04"
+    # Verify openable by python-docx
+    d = Document(io.BytesIO(r.content))
+    assert any(p.text for p in d.paragraphs)
 
 
-def test_download_cover_pdf(scan_result):
-    r = requests.get(f"{BASE_URL}/api/history/{scan_result['scan_id']}/download/cover", headers=HEADERS)
+# Force PDF via fmt query param
+def test_download_resume_fmt_pdf(scan_result):
+    r = requests.get(f"{BASE_URL}/api/history/{scan_result['scan_id']}/download/resume?fmt=pdf", headers=HEADERS)
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/pdf")
     assert r.content.startswith(b"%PDF")
+
+
+# Force DOCX via fmt query param
+def test_download_resume_fmt_docx(scan_result):
+    r = requests.get(f"{BASE_URL}/api/history/{scan_result['scan_id']}/download/resume?fmt=docx", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert r.content[:4] == b"PK\x03\x04"
+    d = Document(io.BytesIO(r.content))
+    assert any(p.text for p in d.paragraphs)
+
+
+# Force TXT via fmt query param on cover letter
+def test_download_cover_fmt_txt(scan_result):
+    r = requests.get(f"{BASE_URL}/api/history/{scan_result['scan_id']}/download/cover?fmt=txt", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    body = r.content.decode("utf-8")
+    assert len(body) > 50
+    assert "Sincerely" in body or "Dear" in body
+
+
+# Cover default uses source_format=docx
+def test_download_cover_default_docx(scan_result):
+    r = requests.get(f"{BASE_URL}/api/history/{scan_result['scan_id']}/download/cover", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert r.content[:4] == b"PK\x03\x04"
 
 
 # Delete

@@ -9,6 +9,7 @@ export default function Dashboard() {
   const fileRef = useRef(null);
   const [resumeText, setResumeText] = useState("");
   const [filename, setFilename] = useState("");
+  const [sourceFormat, setSourceFormat] = useState("pdf");
   const [jobDescription, setJobDescription] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [company, setCompany] = useState("");
@@ -31,6 +32,7 @@ export default function Dashboard() {
       });
       setResumeText(r.data.text);
       setFilename(r.data.filename);
+      setSourceFormat(r.data.source_format || "pdf");
       toast.success("Resume parsed successfully.");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Failed to parse resume.");
@@ -52,6 +54,7 @@ export default function Dashboard() {
           job_description: jobDescription,
           job_title: jobTitle,
           company,
+          source_format: sourceFormat,
         },
         { timeout: 120000 }, // 120s for the 3 parallel LLM calls
       );
@@ -127,7 +130,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setResumeText(""); setFilename(""); }}
+                  onClick={() => { setResumeText(""); setFilename(""); setSourceFormat("pdf"); }}
                   data-testid="clear-resume-button"
                   className="p-1.5 hover:bg-black hover:text-white transition-colors"
                   aria-label="Clear resume"

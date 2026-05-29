@@ -57,6 +57,7 @@ class ScanRequest(BaseModel):
     job_description: str
     job_title: Optional[str] = ""
     company: Optional[str] = ""
+    source_format: Optional[str] = "pdf"  # pdf | docx | txt — used for downloads
 
 
 # ----------------- AUTH HELPERS -----------------
@@ -191,10 +192,13 @@ async def parse_resume(file: UploadFile = File(...), user: User = Depends(get_cu
     try:
         if name.endswith(".pdf"):
             text = extract_text_from_pdf(content)
+            source_format = "pdf"
         elif name.endswith(".docx"):
             text = extract_text_from_docx(content)
+            source_format = "docx"
         elif name.endswith(".txt"):
             text = content.decode("utf-8", errors="ignore")
+            source_format = "txt"
         else:
             raise HTTPException(status_code=400, detail="Only PDF, DOCX, TXT supported")
     except HTTPException:
@@ -204,7 +208,7 @@ async def parse_resume(file: UploadFile = File(...), user: User = Depends(get_cu
         raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
     if not text.strip():
         raise HTTPException(status_code=400, detail="Could not extract text from file")
-    return {"text": text, "filename": file.filename}
+    return {"text": text, "filename": file.filename, "source_format": source_format}
 
 
 # ----------------- LLM HELPERS -----------------
@@ -431,6 +435,7 @@ async def scan_resume(req: ScanRequest, user: User = Depends(get_current_user)):
         "company": req.company or "",
         "job_description": req.job_description,
         "original_resume": req.resume_text,
+        "source_format": (req.source_format or "pdf").lower(),
         "analysis": analysis,
         "optimized_resume": optimization["optimized_resume"],
         "changes_made": optimization.get("changes_made", []),
@@ -504,23 +509,78 @@ def build_pdf(title: str, body_text: str) -> bytes:
     return buf.read()
 
 
+def build_docx(title: str, body_text: str) -> bytes:
+    """Render the optimized resume / cover letter as a clean DOCX."""
+    from docx.shared import Pt
+
+    document = Document()
+    style = document.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+
+    h = document.add_heading(title, level=1)
+    h.alignment = 0
+
+    for line in body_text.split("\n"):
+        stripped = line.rstrip()
+        if not stripped.strip():
+            document.add_paragraph("")
+            continue
+        # Treat UPPERCASE short lines as section headings
+        if stripped.strip().isupper() and 3 <= len(stripped.strip()) <= 40:
+            document.add_heading(stripped.strip(), level=2)
+            continue
+        document.add_paragraph(stripped)
+
+    out = io.BytesIO()
+    document.save(out)
+    return out.getvalue()
+
+
 @api.get("/history/{scan_id}/download/{kind}")
-async def download_pdf(scan_id: str, kind: str, user: User = Depends(get_current_user)):
+async def download_file(
+    scan_id: str,
+    kind: str,
+    fmt: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
     doc = await db.scans.find_one({"scan_id": scan_id, "user_id": user.user_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     if kind == "resume":
-        pdf = build_pdf("Optimized Resume", doc["optimized_resume"])
-        filename = "optimized_resume.pdf"
+        title, body = "Optimized Resume", doc["optimized_resume"]
+        base = "optimized_resume"
     elif kind == "cover":
-        pdf = build_pdf("Cover Letter", doc["cover_letter"])
-        filename = "cover_letter.pdf"
+        title, body = "Cover Letter", doc["cover_letter"]
+        base = "cover_letter"
     else:
         raise HTTPException(status_code=400, detail="kind must be 'resume' or 'cover'")
-    return StreamingResponse(
-        io.BytesIO(pdf),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+
+    chosen = (fmt or doc.get("source_format") or "pdf").lower()
+    if chosen not in ("pdf", "docx", "txt"):
+        chosen = "pdf"
+
+    if chosen == "docx":
+        data = build_docx(title, body)
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"{base}.docx"
+    elif chosen == "txt":
+        data = body.encode("utf-8")
+        media = "text/plain; charset=utf-8"
+        filename = f"{base}.txt"
+    else:
+        data = build_pdf(title, body)
+        media = "application/pdf"
+        filename = f"{base}.pdf"
+
+    return Response(
+        content=data,
+        media_type=media,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "no-store",
+        },
     )
 
 

@@ -1,0 +1,30 @@
+{
+  "summary": "Verified end-to-end the new upload-format-aware download flow. Backend pytest expanded from 11 to 16 tests (all pass in 14.86s): parse_resume returns source_format for PDF/DOCX/TXT; scan_resume stores it; download endpoint with no fmt uses scan.source_format; ?fmt=pdf returns %PDF, ?fmt=docx returns PK\\x03\\x04 (openable by python-docx), ?fmt=txt returns text/plain with cover-letter content (Sincerely/Dear). Frontend Playwright: dashboard DOCX upload parses correctly and shows filename + char count; ScanResult page for a DOCX-sourced scan shows 'DOCX' (not 'PDF') on both download buttons; clicking either triggers a true file download — captured via page.expect_download() — with .docx suggested filename, PK\\x03\\x04 magic header, and python-docx successfully reads 14 paragraphs from optimized_resume.docx and a cover letter containing the date, 'Dear Hiring Manager', and 'Sincerely'. Toast 'Downloaded optimized_resume.docx' surfaced. Sample.docx file ~37KB.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py download_file: defensive lowercasing of fmt + safe fallback to 'pdf' for unknown values is clean. Source-format stored on scan doc (line 438) is normalized to lowercase — good.",
+    "build_docx uses Heading 1 for title and Heading 2 for ALL-CAPS section lines (SUMMARY/SKILLS/EXPERIENCE/etc) — matches the optimized resume's expected structure. Verified python-docx opens output cleanly.",
+    "Dashboard.jsx correctly threads r.data.source_format through state and into the scan POST body (default 'pdf' fallback). ScanResult.downloadPdf reads scan.source_format, sets matching MIME and .ext on <a download>, and reads error blobs as JSON for toast — robust error UX.",
+    "Minor: Cover-letter DOCX heading is hard-coded 'Cover Letter' regardless of locale; not a bug, just noting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100%"},
+  "test_credentials": "Reused seeded mongosh session_token=test_session_1737000000 (user_id=test-user-1737000000, name=Jane Doe) - still valid through 2026-06-05.",
+  "seed_data_creation": "Created a temporary scan (source_format=docx) via API for the playwright download test, then DELETE /api/history/{scan_id} to clean up. Sample DOCX written to /tmp/sample.docx (transient).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite is at /app/backend/tests/backend_test.py (16 tests, ~15s runtime). Session token at line 9. To test UI downloads: pre-create a scan via API with the desired source_format, then navigate the playwright context to /scan/{id} with the session_token cookie, click [data-testid=download-resume-pdf] or [data-testid=download-cover-pdf] inside page.expect_download(). Button label dynamically shows source_format.toUpperCase(). The 'download-resume-pdf' / 'download-cover-pdf' testids are historical names — they handle DOCX/TXT/PDF generically.",
+  "rca of the issue": "N/A — original PDF-only download bug is fixed end-to-end. Upload format flows: file -> /api/resumes/parse returns {source_format} -> Dashboard state -> /api/resumes/scan body -> stored on scan doc -> /api/history/{id}/download/{kind} defaults to that format -> Response with correct media_type + filename ext. Frontend sets matching MIME on Blob and .ext on the <a download> anchor."
+}

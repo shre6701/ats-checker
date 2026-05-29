@@ -72,22 +72,51 @@ export default function ScanResult() {
 
   const downloadPdf = async (kind) => {
     setDownloading(kind);
+    const fmt = (scan.source_format || "pdf").toLowerCase();
+    const ext = fmt === "docx" ? "docx" : fmt === "txt" ? "txt" : "pdf";
+    const mime =
+      fmt === "docx"
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : fmt === "txt"
+        ? "text/plain"
+        : "application/pdf";
     try {
-      const r = await api.get(`/history/${scan.scan_id}/download/${kind}`, { responseType: "blob" });
-      const blob = new Blob([r.data], { type: "application/pdf" });
+      const r = await api.get(`/history/${scan.scan_id}/download/${kind}`, {
+        responseType: "blob",
+        params: { fmt },
+      });
+      const blob = new Blob([r.data], { type: mime });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = kind === "resume" ? "optimized_resume.pdf" : "cover_letter.pdf";
+      link.download = `${kind === "resume" ? "optimized_resume" : "cover_letter"}.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      // small delay so the browser keeps the URL until the download dialog appears
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast.success(`${kind === "resume" ? "Resume" : "Cover letter"} downloaded`);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast.success(`Downloaded ${link.download}`);
     } catch (err) {
-      console.error("PDF download failed", err);
-      toast.error("Download failed");
+      console.error("download failed", err);
+      // axios returns errors as Blob when responseType is blob — try to read the message
+      let msg = "Download failed";
+      try {
+        if (err?.response?.data instanceof Blob) {
+          const txt = await err.response.data.text();
+          try {
+            const j = JSON.parse(txt);
+            msg = j.detail || msg;
+          } catch {
+            msg = txt || msg;
+          }
+        } else if (err?.response?.data?.detail) {
+          msg = err.response.data.detail;
+        } else if (err?.message) {
+          msg = err.message;
+        }
+      } catch {
+        // ignore
+      }
+      toast.error(msg);
     } finally {
       setDownloading(null);
     }
@@ -252,7 +281,7 @@ export default function ScanResult() {
                 data-testid="download-resume-pdf"
                 className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Download size={12} weight="bold" /> {downloading === "resume" ? "..." : "PDF"}
+                <Download size={12} weight="bold" /> {downloading === "resume" ? "..." : (scan.source_format || "pdf").toUpperCase()}
               </button>
             </div>
           </div>
@@ -318,7 +347,7 @@ export default function ScanResult() {
               data-testid="download-cover-pdf"
               className="px-3 py-2 bg-[#002FA7] text-white font-mono text-[10px] tracking-wider hover:bg-black transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Download size={12} weight="bold" /> {downloading === "cover" ? "..." : "PDF"}
+              <Download size={12} weight="bold" /> {downloading === "cover" ? "..." : (scan.source_format || "pdf").toUpperCase()}
             </button>
           </div>
         </div>
