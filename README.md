@@ -1,4 +1,4 @@
-# ATS / RANK
+# ATS-checker
 
 An ATS resume scanner and cover letter generator powered by Claude Sonnet 4.5.
 
